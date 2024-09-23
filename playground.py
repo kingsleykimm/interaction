@@ -21,7 +21,7 @@ import habitat
 from habitat.core.env import Env
 from habitat_sim.utils import viz_utils as vut
 from habitat_sim.nav import ShortestPath
-
+from functools import partial
 
 cv2 = try_cv2_import()
 
@@ -162,9 +162,10 @@ def display_env_topdown_map(env : habitat.Env, key_points=None):
     mp_filename = os.path.join(os.getcwd(), 'map.png')
     imageio.imsave(mp_filename, hablab_topdown_map)
 
-def gesture_ahead(env : habitat.Env, humanoid_controller, observations):
+def gesture_ahead(env : habitat.Env, humanoid_controller):
     # offset =  env.sim.agents_mgr[0].articulated_agent.base_transformation.transform_vector(mn.Vector3(0, 0.3, 0))
     hand_pose = env.sim.agents_mgr[0].articulated_agent.ee_transform(1).translation # EE stands for end effector
+    observations = []
     # humanoid_controller.calculate_reach_pose(hand_pose, index_hand=1)
     # new_pose = humanoid_controller.get_pose()
     # action_dict = {
@@ -214,6 +215,7 @@ def gesture_ahead(env : habitat.Env, humanoid_controller, observations):
         }
         obs = env.step(action_dict)
         observations.append(obs)
+    return observations
 
 def get_next_closest_point(agent_pos, final_targ, pathfinder):
     path = ShortestPath()
@@ -224,8 +226,8 @@ def get_next_closest_point(agent_pos, final_targ, pathfinder):
         return [agent_pos, final_targ]
     return path.points
 
-def agent_first(agent_no, final_targ, env, observations):
-    
+def agent_first(agent_no, final_targ, env):
+    observations = []
     for i in range(45):
         action_dict = {
             'action' : f"agent_{agent_no}_navigate_action",
@@ -236,6 +238,7 @@ def agent_first(agent_no, final_targ, env, observations):
         }
         obs = env.step(action_dict)
         observations.append(obs)
+    return observations
 
 def detect_humanoid(env : habitat.Env, cur_panoptic_observation, ratio, pixel_threshold, human_id):
     # get current height and width of humanoid sensor
@@ -262,11 +265,54 @@ def slow_down_agents(env : habitat.Env, target_pos, humanoid_controller : Humano
         humanoid_controller.calculate_walk_pose(mn.Vector3(vector[0], 0, vector[1]), 0.01)
         humanoid_action = humanoid_controller.get_pose()
         return humanoid_action
-    # now for robot
 
+def gesture_stop(env, humanoid_controller):
+    observations = []
+    human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
+    humanoid_controller.obj_transform_base = human_transformation
+    rel_pos = env.sim.agents_mgr[1].articulated_agent.base_pos
+    print(rel_pos)
+    rel_pos = np.array(env.sim.agents_mgr[1].articulated_agent.base_pos) - np.array(env.sim.agents_mgr[0].articulated_agent.base_pos)
+    humanoid_controller.calculate_turn_pose(mn.Vector3(rel_pos[0], 0, rel_pos[2]))
+    new_pose = humanoid_controller.get_pose()
+    action_dict = {
+        "action": "agent_0_humanoid_joint_action",
+        "action_args": {"agent_0_human_joints_trans": new_pose}
+    }
+    observations.append(env.step(action_dict))
+    hand_pose = env.sim.agents_mgr[0].articulated_agent.ee_transform(1).translation
+    gesture_steps = 50
+    # maybe divide by gesture steps, with 3 above
+
+    for i in range(gesture_steps // 2):
+        hand_pose = hand_pose + mn.Vector3(rel_pos[0] / gesture_steps, (rel_pos[1] + 0.6) / gesture_steps, rel_pos[2] / gesture_steps)
+        human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
+        humanoid_controller.obj_transform_base = human_transformation
+        humanoid_controller.calculate_reach_pose(hand_pose, index_hand=1)
+        new_pose = humanoid_controller.get_pose()
+        action_dict = {
+            "action": "agent_0_humanoid_joint_action",
+            "action_args": {"agent_0_human_joints_trans": new_pose}
+        }
+        obs = env.step(action_dict)
+        observations.append(obs)
+    for i in range(gesture_steps // 2):
+        hand_pose = hand_pose + mn.Vector3(-rel_pos[0] / gesture_steps, -(rel_pos[1] + 0.6) / gesture_steps, rel_pos[2] / gesture_steps)
+        human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
+        humanoid_controller.obj_transform_base = human_transformation
+        humanoid_controller.calculate_reach_pose(hand_pose, index_hand=1)
+        new_pose = humanoid_controller.get_pose()
+        action_dict = {
+            "action": "agent_0_humanoid_joint_action",
+            "action_args": {"agent_0_human_joints_trans": new_pose}
+        }
+        obs = env.step(action_dict)
+        observations.append(obs)
+    return observations
 def play_env(env : habitat.Env) -> None: # we are in the environment at this point
     # at this point, the simulator should be set up and embedded into env
     observations = []
+    nav_observations = []
     # Set up humaonid here
     # humanoid = KinematicHumanoid(get_agent_config(sim_config=config.habitat.simulator), env.sim)
     # humanoid.reconfigure()
@@ -285,7 +331,6 @@ def play_env(env : habitat.Env) -> None: # we are in the environment at this poi
     map_human_pos = [human_pos[0], human_pos[2]]
     map_robot_pos = [robot_pos[0], robot_pos[2]]
     # display_env_topdown_map(env, key_points=[map_human_pos, map_robot_pos])
-
     
     humanoid_controller = HumanoidRearrangeController(walk_pose_path=DEFAULT_WALK_POSE_PATH)
     humanoid_controller.reset(env.sim.agents_mgr[0].articulated_agent.base_transformation)
@@ -369,10 +414,17 @@ def play_env(env : habitat.Env) -> None: # we are in the environment at this poi
                 "action": "agent_0_humanoid_joint_action",
                 "action_args": {"agent_0_human_joints_trans" : action } 
                 }
-            observations.append(env.step(action_dict))
+            obs = env.step(action_dict)
+            observations.append(obs)
+            nav_observations.append(obs)
 
-            gesture_ahead(env, humanoid_controller, observations)
-            agent_first(1, object_trans, env, observations)
+            gesture_obs = gesture_ahead(env, humanoid_controller)
+            observations += gesture_obs
+            nav_observations += gesture_obs
+            # gesture_stop(env, humanoid_controller, observations)
+            agent_first_obs = agent_first(1, object_trans, env)
+            observations += agent_first_obs
+            nav_observations += gesture_obs
             # make a few methods here, human first, robot first, languages
             
         
@@ -381,17 +433,28 @@ def play_env(env : habitat.Env) -> None: # we are in the environment at this poi
         agent_displ = (cur_pos - prev_pos).length() # these two variables are tracking the distance
         agent_rot = np.abs(cur_rot - prev_rot)
         
-    # output_file = os.path.join(os.getcwd(), 'scenario_data.pkl')
-    # with open(output_file, 'wb') as outp:
-    #     pickle.dump(observations, outp, pickle.HIGHEST_PROTOCOL)
+    # vut.make_video(
+    #     observations,
+    #     "agent_1_articulated_agent_arm_rgb",
+    #     "color",
+    #     "gesture_ahead",
+    #     open_vid=False,
+    # )
+    observation_to_image = partial(vut.observation_to_image, depth_clip=10.0)
+    save_dir = os.path.join(os.getcwd(), "gesture_ahead")
+    os.makedirs(save_dir, exist_ok=True)
+    for ind, ob in enumerate(nav_observations):
+        img = vut.make_video_frame(
+            ob,
+            "agent_1_articulated_agent_arm_rgb",
+            "color",
+            video_dims=None,
+            overlay_settings=None,
+            observation_to_image=observation_to_image,
+        )
+        img.save(os.path.join(save_dir, f"{ind}.png"))
 
-    vut.make_video(
-        observations,
-        "agent_0_third_rgb",
-        "color",
-        "robot_tutorial_video",
-        open_vid=False,
-    )
+    
 # some more notes:
 # in order to step through the environment, we need to pass in an action dictionary with {"action", "action_args"}    
 # actions go under the task config yaml

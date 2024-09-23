@@ -2,6 +2,10 @@ import numpy as np
 import magnum as mn
 import habitat
 import math
+
+"""
+This class takes in a config file / yaml and runs the amount of scenarios and saves them to a file (for data collection purposes).
+"""
 class SocialNavScenario:
 
     def __init__(self, human_first, gesture, language):
@@ -9,6 +13,10 @@ class SocialNavScenario:
         self.gesture = gesture
         self.language = language
     
+    def setup_config(self, file_name):
+        # file_name is a yaml file
+        pass
+
     def setup_env(self, env, observations, config, 
                   ):
         # config will contain humanoidrearrangecontroller, the goal object, everything starting from the while loop
@@ -44,7 +52,10 @@ class SocialNavScenario:
                     if self.gesture:
                         # implement  gesture here
                         self.gesture_ahead(self.env, self.controller, self.observations) # human gestures
-                        self.agent_first(1, final_targ)
+                    self.agent_first(1, final_targ)
+                else:
+                    # human speeds up
+                    self.human_speed_up()
                         
 
 
@@ -95,7 +106,7 @@ class SocialNavScenario:
         return human_id_sum > pixel_threshold
     def agent_first(self, agent_no, final_targ):
     
-        for i in range(45):
+        for i in range(30):
             action_dict = {
                 'action' : f"agent_{agent_no}_navigate_action",
                 "action_args" : {

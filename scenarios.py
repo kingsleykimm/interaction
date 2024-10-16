@@ -8,11 +8,12 @@ This class takes in a config file / yaml and runs the amount of scenarios and sa
 """
 class SocialNavScenario:
 
-    def __init__(self, human_first, gesture, language):
+    def __init__(self, human_first, gesture, language, num_goals, iterations):
         self.human_first = human_first
         self.gesture = gesture
         self.language = language
-    
+        self.num_goals = num_goals
+        self.iterations = iterations
     def setup_config(self, file_name):
         # file_name is a yaml file
         pass
@@ -93,8 +94,7 @@ class SocialNavScenario:
     def add_language(self):
         # adds language to observations, otherwise an empty stringp
         pass
-    def record_scenario(self):
-        pass
+
     def detect_humanoid(self, env : habitat.Env, cur_panoptic_observation, ratio, pixel_threshold, human_id):
     # get current height and width of humanoid sensor
         height, width = cur_panoptic_observation.shape[:2]

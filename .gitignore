@@ -1,2 +1,6 @@
 *data
-/robot_tutorial_video.mp4
+*.mp4
+hitl*
+*outputs
+*gesture_ahead*
+__pycache__

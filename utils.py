@@ -4,6 +4,7 @@ from functools import partial
 from habitat_sim.utils import viz_utils as vut
 import numpy as np
 from habitat.utils.visualizations import maps
+import pickle
 
 def convert_points_to_topdown(pathfinder, points, meters_per_pixel):
     points_topdown = []

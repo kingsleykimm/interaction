@@ -242,8 +242,10 @@ def gesture_stop(env, humanoid_controller):
         "action_args": {"agent_0_human_joints_trans": new_pose}
     }
     observations.append(env.step(action_dict))
+    for i in range(10): # 10 ms
+        observations.append(env.step(action_dict))
     hand_pose = env.sim.agents_mgr[0].articulated_agent.ee_transform(1).translation
-    gesture_steps = 50
+    gesture_steps = 30
     # maybe divide by gesture steps, with 3 above
     humanoid_controller.obj_transform_base = human_transformation
     humanoid_controller.calculate_reach_pose(env.sim.agents_mgr[1].articulated_agent.translation, index_hand=1)

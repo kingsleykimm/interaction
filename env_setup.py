@@ -2,20 +2,21 @@
 from omegaconf import OmegaConf
 from habitat.config.default_structured_configs import HumanoidJointActionConfig, HumanoidPickActionConfig, OracleNavActionConfig
 from habitat.config.default_structured_configs import TaskConfig, EnvironmentConfig, HabitatConfig, SimulatorConfig, DatasetConfig, AgentConfig
-from habitat.config.default_structured_configs import ThirdRGBSensorConfig, HeadRGBSensorConfig, HumanoidDetectorSensorConfig, HeadDepthSensorConfig, ArmPanopticSensorConfig, HeadingSensorConfig, ArmRGBSensorConfig, ArmDepthSensorConfig, BaseVelocityActionConfig, HumanoidJointSensorConfig
+from habitat.config.default_structured_configs import ThirdRGBSensorConfig, HeadRGBSensorConfig, HumanoidDetectorSensorConfig, HeadDepthSensorConfig, ArmPanopticSensorConfig, HeadingSensorConfig, ArmRGBSensorConfig, ArmDepthSensorConfig, BaseVelocityActionConfig, HumanoidJointSensorConfig, HasFinishedOracleNavSensorConfig
 from habitat.core.env import Env
 
 HUMANOID_ACTION_DICT = {
     "humanoid_joint_action": HumanoidJointActionConfig(),
     "navigate_action": OracleNavActionConfig(type="OracleNavCoordinateAction", 
                                                       motion_control="human_joints",
-                                                      spawn_max_dist_to_obj=1.0),
+                                                      spawn_max_dist_to_obj=-1),
     "humanoid_pick_obj_id_action": HumanoidPickActionConfig(type="HumanoidPickObjIdAction"),
 }
 
 ROBOT_DEFAULT_DICT = {
     "navigate_action" : OracleNavActionConfig(type="OracleNavCoordinateAction",
                                                     motion_control="base_velocity",
+                                                    spawn_max_dist_to_obj=-1.0
                                                     ),
     "base_vel_action" : BaseVelocityActionConfig()
 }
@@ -40,12 +41,14 @@ def make_sim_cfg(agent_dict):
 
 def make_hab_cfg(agent_dict, action_dict):
     sim_cfg = make_sim_cfg(agent_dict)
+    print("BEFORE")
     task_config = TaskConfig(type="RearrangeEmptyTask-v0")
     task_config.actions = action_dict # setups the actions that we can use, we can import these from structuredconfigs as well
     task_config.lab_sensors = {
         'humanoid_detector' : HumanoidDetectorSensorConfig(human_pixel_threshold=1500), # these get assigned to each agent, so remember to prepend with the agent_{id}
         'heading_sensor' : HeadingSensorConfig(),
         'joint_sensor' : HumanoidJointSensorConfig(),
+        'has_finished_sensor': HasFinishedOracleNavSensorConfig(),
     }
     dataset_cfg = DatasetConfig(
         type="RearrangeDataset-v0",
@@ -62,10 +65,12 @@ def make_hab_cfg(agent_dict, action_dict):
 
     return habitat_cfg
 
-def env_setup(agent_dict, action_dict): # pass in config from yaml
+def env_setup(): # pass in config from yaml
+    agent_dict, action_dict = agent_action_setup()
     hab_cfg = make_hab_cfg(agent_dict, action_dict)
     res_cfg = OmegaConf.create(hab_cfg)
     return Env(res_cfg)
+
 
 def agent_action_setup():
     agent_dict = {}

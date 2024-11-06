@@ -24,23 +24,3 @@ ROBOT_DEFAULT_DICT = {
                                                     ),
     "base_vel_action" : BaseVelocityActionConfig()
 }
-
-sim_cfg:
-    type: "RearrangeSim-v0"
-    seed: 20
-    scene: data/hab3_bench_assets/hab3-hssd/scenes/103997919_171031233.scene_instance.json
-    scene_dataset: data/hab3_bench_assets/hab3-hssd/hab3-hssd.scene_dataset_config.json
-    additional_object_paths:
-    habitat_sim_v0: ['data/objects/ycb/configs/']
-        enable_physics: True
-        enable_hbao: True
-agent_cfg:
-    - agent_1:
-        articulated_agent_type: KinematicHumanoid
-        articulated_agent_urdf: data/humanoids/humanoid_data/male_0/male_0.urdf
-        motion_data_path: data/humanoids/humanoid_data/male_0/male_0_motion_data_smplx.pkl
-        sim_sensors:
-            - third_rgb
-            - head_rgb
-            
-        

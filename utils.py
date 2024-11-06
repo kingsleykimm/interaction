@@ -4,6 +4,7 @@ from functools import partial
 from habitat_sim.utils import viz_utils as vut
 import numpy as np
 from habitat.utils.visualizations import maps
+from habitat_sim.nav import ShortestPath
 import pickle
 
 def convert_points_to_topdown(pathfinder, points, meters_per_pixel):
@@ -75,3 +76,12 @@ def simulate(sim, dt, get_observations=False):
         if get_observations:
             observations.append(sim.get_sensor_observations())
     return observations
+
+def get_next_closest_point(agent_pos, final_targ, pathfinder):
+    path = ShortestPath()
+    path.requested_start = agent_pos
+    path.requested_end = final_targ
+    found_path = pathfinder.find_path(path)
+    if not found_path:
+        return [agent_pos, final_targ]
+    return path.points

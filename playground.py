@@ -17,17 +17,18 @@ from habitat_sim.nav import ShortestPath
 
 
 
-DEFAULT_WALK_POSE_PATH = "data/humanoids/humanoid_data/female_2/female_2_motion_data_smplx.pkl"
+DEFAULT_WALK_POSE_PATH = 'data/humanoids/humanoid_data/male_0/male_0_motion_data_smplx.pkl'
 HUMANOID_ACTION_DICT = {
     "humanoid_joint_action": HumanoidJointActionConfig(),
     "navigate_action": OracleNavActionConfig(type="OracleNavCoordinateAction", 
                                                       motion_control="human_joints",
-                                                      spawn_max_dist_to_obj=1.0),
+                                                      spawn_max_dist_to_obj=-1.0),
     "humanoid_pick_obj_id_action": HumanoidPickActionConfig(type="HumanoidPickObjIdAction"),
 }
 
 ROBOT_DEFAULT_DICT = {
     "navigate_action" : OracleNavActionConfig(type="OracleNavCoordinateAction",
+                                              spawn_max_dist_to_obj=-1.0,
                                                     motion_control="base_velocity",
                                                     ),
     "base_vel_action" : BaseVelocityActionConfig()
@@ -35,7 +36,7 @@ ROBOT_DEFAULT_DICT = {
 
 
 def make_sim_cfg(agent_dict):
-    sim_cfg = SimulatorConfig(type="RearrangeSim-v0", seed=40)
+    sim_cfg = SimulatorConfig(type="RearrangeSim-v0")
     sim_cfg.habitat_sim_v0.enable_physics = True
     sim_cfg.habitat_sim_v0.enable_hbao = True
 
@@ -62,7 +63,7 @@ def make_hab_cfg(agent_dict, action_dict):
     }
     dataset_cfg = DatasetConfig(
         type="RearrangeDataset-v0",
-        data_path="data/hab3_bench_assets/episode_datasets/small_medium.json.gz"
+        data_path="data/hab3_bench_assets/episode_datasets/small_medium.json.gz",
     )
     env_cfg = EnvironmentConfig()
     
@@ -86,7 +87,7 @@ def agent_action_setup():
     main_agent_config.articulated_agent_type = 'KinematicHumanoid'
     main_agent_config.articulated_agent_urdf = 'data/humanoids/humanoid_data/male_0/male_0.urdf'
     main_agent_config.motion_data_path = 'data/humanoids/humanoid_data/male_0/male_0_motion_data_smplx.pkl'
-    main_agent_config.ik_arm_urdf = ('data/humanoids/humanoid_data/male_0/male_0.urdf')
+    # main_agent_config.ik_arm_urdf = ('data/humanoids/humanoid_data/male_0/male_0.urdf')
     main_agent_config.sim_sensors = {
         'third_rgb' : ThirdRGBSensorConfig(position=[0.0, 0.25, 0.0]),
         'head_rgb' : HeadRGBSensorConfig(),
@@ -120,11 +121,13 @@ def agent_action_setup():
 
 
 
-def gesture_ahead(env : habitat.Env, humanoid_controller):
+def gesture_ahead(env : habitat.Env, humanoid_controller, target):
     # offset =  env.sim.agents_mgr[0].articulated_agent.base_transformation.transform_vector(mn.Vector3(0, 0.3, 0))
-    # argmin on which hand to use
-    hands = [env.sim.agents_mgr[0].articulated_agent.ee_transform(0).translation, env.sim.agents_mgr[0].articulated_agent.ee_transform(1).translation]
-    if hands[0] < hands[1]:
+    # argmin on which hand to use based on distance
+    target = np.array(target)
+    hands = [np.array(env.sim.agents_mgr[0].articulated_agent.ee_transform(0).translation), np.array(env.sim.agents_mgr[0].articulated_agent.ee_transform(1).translation)]
+    distances = [np.linalg.norm(target - hand) for hand in hands]
+    if distances[0] < distances[1]:
         hand_pose = env.sim.agents_mgr[0].articulated_agent.ee_transform(0).translation
         hand = 0
     else:
@@ -132,20 +135,23 @@ def gesture_ahead(env : habitat.Env, humanoid_controller):
         hand = 1
     observations = []
     # we need to keep updating the base by using the articulated_agent.base_transformation
-    human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
-    humanoid_controller.obj_transform_base = human_transformation
-    rel_pos = np.array(env.sim.agents_mgr[1].articulated_agent.base_pos) - np.array(env.sim.agents_mgr[0].articulated_agent.base_pos)
-    humanoid_controller.calculate_turn_pose(mn.Vector3(rel_pos[0], 0, rel_pos[2]))
+    humanoid_controller.obj_transform_base = env.sim.agents_mgr[0].articulated_agent.base_transformation
+    rel_pos = np.array(env.sim.agents_mgr[1].articulated_agent.base_pos - env.sim.agents_mgr[0].articulated_agent.base_pos)[[0, 2]]
+    # rel_pos = np.array(env.sim.agents_mgr[1].articulated_agent.base_pos) - np.array(env.sim.agents_mgr[0].articulated_agent.base_pos) 
+    humanoid_controller.calculate_turn_pose(mn.Vector3(rel_pos[0], 0, rel_pos[1]))
     new_pose = humanoid_controller.get_pose()
     action_dict = {
         "action": "agent_0_humanoid_joint_action",
         "action_args": {"agent_0_human_joints_trans": new_pose}
     }
     observations.append(env.step(action_dict))
-    gesture_steps = 15
-    for i in range(gesture_steps):
+    for i in range(10): # 10 ms
+        observations.append(env.step(action_dict))
+    gesture_steps = 30
+    hand_vec = np.array(target - hands[hand])[[0, 2]] / 2
+    for i in range(gesture_steps//3):
         # This computes a pose that moves the agent to relative_position
-        hand_pose = hand_pose + mn.Vector3(0, 0, 0.05)
+        hand_pose = hand_pose + mn.Vector3(hand_vec[0] / gesture_steps, 0, hand_vec[1] / gesture_steps)
         human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
         humanoid_controller.obj_transform_base = human_transformation
         humanoid_controller.calculate_reach_pose(hand_pose, index_hand=hand)
@@ -157,9 +163,9 @@ def gesture_ahead(env : habitat.Env, humanoid_controller):
         }
         obs = env.step(action_dict)
         observations.append(obs)
-    for i in range(gesture_steps):
+    for i in range(gesture_steps//3):
         # This computes a pose that moves the agent to relative_position
-        hand_pose = hand_pose + mn.Vector3(0, 0, -0.05)
+        hand_pose = hand_pose + mn.Vector3(-hand_vec[0] / gesture_steps, 0, -hand_vec[1] / gesture_steps)
         human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
         humanoid_controller.obj_transform_base = human_transformation
         humanoid_controller.calculate_reach_pose(hand_pose, index_hand=hand)
@@ -239,31 +245,40 @@ def gesture_stop(env, humanoid_controller):
     hand_pose = env.sim.agents_mgr[0].articulated_agent.ee_transform(1).translation
     gesture_steps = 50
     # maybe divide by gesture steps, with 3 above
+    humanoid_controller.obj_transform_base = human_transformation
+    humanoid_controller.calculate_reach_pose(env.sim.agents_mgr[1].articulated_agent.translation, index_hand=1)
+    new_pose = humanoid_controller.get_pose()
+    action_dict = {
+        "action": "agent_0_humanoid_joint_action",
+        "action_args": {"agent_0_human_joints_trans": new_pose}
+    }
+    obs = env.step(action_dict)
+    observations.append(obs) 
 
-    for i in range(gesture_steps // 2):
-        hand_pose = hand_pose + mn.Vector3(rel_pos[0] / gesture_steps, (rel_pos[1] + 0.6) / gesture_steps, rel_pos[2] / gesture_steps)
-        human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
-        humanoid_controller.obj_transform_base = human_transformation
-        humanoid_controller.calculate_reach_pose(hand_pose, index_hand=1)
-        new_pose = humanoid_controller.get_pose()
-        action_dict = {
-            "action": "agent_0_humanoid_joint_action",
-            "action_args": {"agent_0_human_joints_trans": new_pose}
-        }
-        obs = env.step(action_dict)
-        observations.append(obs)
-    for i in range(gesture_steps // 2):
-        hand_pose = hand_pose + mn.Vector3(-rel_pos[0] / gesture_steps, -(rel_pos[1] + 0.6) / gesture_steps, rel_pos[2] / gesture_steps)
-        human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
-        humanoid_controller.obj_transform_base = human_transformation
-        humanoid_controller.calculate_reach_pose(hand_pose, index_hand=1)
-        new_pose = humanoid_controller.get_pose()
-        action_dict = {
-            "action": "agent_0_humanoid_joint_action",
-            "action_args": {"agent_0_human_joints_trans": new_pose}
-        }
-        obs = env.step(action_dict)
-        observations.append(obs)
+    # for i in range(gesture_steps // 2):
+    #     hand_pose = hand_pose + mn.Vector3(rel_pos[0] / gesture_steps, (rel_pos[1] + 0.6) / gesture_steps, rel_pos[2] / gesture_steps)
+    #     human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
+    #     humanoid_controller.obj_transform_base = human_transformation
+    #     humanoid_controller.calculate_reach_pose(hand_pose, index_hand=1)
+    #     new_pose = humanoid_controller.get_pose()
+    #     action_dict = {
+    #         "action": "agent_0_humanoid_joint_action",
+    #         "action_args": {"agent_0_human_joints_trans": new_pose}
+    #     }
+    #     obs = env.step(action_dict)
+    #     observations.append(obs)
+    # for i in range(gesture_steps // 2):
+    #     hand_pose = hand_pose + mn.Vector3(-rel_pos[0] / gesture_steps, -(rel_pos[1] + 0.6) / gesture_steps, rel_pos[2] / gesture_steps)
+    #     human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
+    #     humanoid_controller.obj_transform_base = human_transformation
+    #     humanoid_controller.calculate_reach_pose(hand_pose, index_hand=1)
+    #     new_pose = humanoid_controller.get_pose()
+    #     action_dict = {
+    #         "action": "agent_0_humanoid_joint_action",
+    #         "action_args": {"agent_0_human_joints_trans": new_pose}
+    #     }
+    #     obs = env.step(action_dict)
+    #     observations.append(obs)
     return observations
 def play_env(env : habitat.Env) -> None: # we are in the environment at this point
     # at this point, the simulator should be set up and embedded into env
@@ -273,25 +288,31 @@ def play_env(env : habitat.Env) -> None: # we are in the environment at this poi
     # humanoid_controller = HumanoidRearrangeController(DEFAULT_WALK_POSE_PATH)
     # humanoid_controller.reset(env.sim.articulated_agent.base_transformation)
     # humanoid_controller.apply_base_transformation(env.sim.articulated_agent.base_transformation)
-    env.reset()
+    
 
-    rom = env.sim.get_rigid_object_manager() # manager for all current objects, we're going to choose one to go 
-    for i in range(len(env.sim.scene_obj_ids)):
-        obj_id = env.sim.scene_obj_ids[i]
+    # for i in range(len(env.sim.scene_obj_ids)):)
+    env.reset()
+    obj_ids = env.sim.scene_obj_ids
+    for i in range(10):
+        env.reset()
+        observations = []
+        rom = env.sim.get_rigid_object_manager() # manager for all current objects, we're going to choose one to go 
+        obj_id = env.sim.scene_obj_ids[i % len(env.sim.scene_obj_ids)]
+        print(obj_id)
         first_object = rom.get_object_by_id(obj_id)
         object_trans = first_object.translation
         # Let's try to place the human and robot_pos at equidistant places from the object
         possible_human_pos = env.sim.agents_mgr[0].articulated_agent.base_pos
         possible_robot_pos = env.sim.agents_mgr[1].articulated_agent.base_pos
-        possible_human_pos = env.sim.pathfinder.get_random_navigable_point_near(circle_center=np.array(object_trans), radius=12)
-        possible_robot_pos = env.sim.pathfinder.get_random_navigable_point_near(circle_center=np.array(object_trans), radius=12)
+        possible_human_pos = env.sim.pathfinder.snap_point(env.sim.pathfinder.get_random_navigable_point_near(circle_center=np.array(object_trans), radius=8))
+        possible_robot_pos = env.sim.pathfinder.snap_point(env.sim.pathfinder.get_random_navigable_point_near(circle_center=np.array(object_trans), radius=8))
         env.sim.agents_mgr[1].articulated_agent.base_pos = possible_robot_pos
         env.sim.agents_mgr[0].articulated_agent.base_pos = possible_human_pos
         humanoid_controller = HumanoidRearrangeController(walk_pose_path=DEFAULT_WALK_POSE_PATH)
         humanoid_controller.reset(env.sim.agents_mgr[0].articulated_agent.base_transformation)
         print("Object translation ", object_trans)
         print(first_object.handle, "is in", object_trans)
-        targ = object_trans
+        targ = env.sim.pathfinder.snap_point(object_trans)
         agent_displ = np.inf
         agent_rot = np.inf
         prev_rot = env.sim.agents_mgr[0].articulated_agent.base_rot # when we use multiple agents we need to use agents_mgr
@@ -299,7 +320,10 @@ def play_env(env : habitat.Env) -> None: # we are in the environment at this poi
         base_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation 
         print(base_transformation, prev_pos)
         human_seen = False
-            
+        if env.episode_over:
+            env.reset()
+            continue
+
         while agent_displ > 1e-9 or agent_rot > 1e-9:
             prev_rot = env.sim.agents_mgr[0].articulated_agent.base_rot # when we use multiple agents we need to use agents_mgr
             prev_pos = env.sim.agents_mgr[0].articulated_agent.base_pos
@@ -312,9 +336,11 @@ def play_env(env : habitat.Env) -> None: # we are in the environment at this poi
                     "agent_1_mode" : 1,
                 }
             }
+            if env.episode_over:
+                break
             obs = env.step(action_dict)
             observations.append(obs)
-            if detect_humanoid(env, obs['agent_1_articulated_agent_arm_panoptic'], 0.85, 1000, 100) and not human_seen:
+            if detect_humanoid(obs['agent_1_articulated_agent_arm_panoptic'], 0.85, 1350, 100) and not human_seen:
                 human_seen = True
                 action = slow_down_agents(env, targ, humanoid_controller, True)
                 action_dict = {
@@ -325,7 +351,7 @@ def play_env(env : habitat.Env) -> None: # we are in the environment at this poi
                 observations.append(obs)
                 nav_observations.append(obs)
 
-                gesture_obs = gesture_ahead(env, humanoid_controller)
+                gesture_obs = gesture_ahead(env, humanoid_controller, targ)
                 observations += gesture_obs
                 nav_observations += gesture_obs
                 agent_first_obs = agent_first(1, targ, env)
@@ -335,15 +361,15 @@ def play_env(env : habitat.Env) -> None: # we are in the environment at this poi
             cur_pos = env.sim.agents_mgr[0].articulated_agent.base_pos
             agent_displ = (cur_pos - prev_pos).length() # these two variables are tracking the distance
             agent_rot = np.abs(cur_rot - prev_rot)
-        vut.make_video(
-            observations,
-            "agent_1_articulated_agent_arm_rgb",
-            "color",
-            f"tests_{i}",
-            open_vid=False,
-        )
-        env.sim.seed = i
-        env.reset()
+        if human_seen:
+            vut.make_video(
+                observations,
+                "agent_1_articulated_agent_arm_rgb",
+                "color",
+                f"test_{i}",
+                open_vid=False,
+            )
+        # env.sim.seed = i
 
 def testing(env : habitat.Env):
     observations = []
@@ -403,5 +429,5 @@ def testing(env : habitat.Env):
 if __name__ == '__main__':
     agent_dict, action_dict = agent_action_setup()
     env = env_setup(agent_dict, action_dict)
-    testing(env)
-    # play_env(env)
+    # testing(env)
+    play_env(env)

@@ -5,6 +5,7 @@ from habitat_sim.utils import viz_utils as vut
 import numpy as np
 from habitat.utils.visualizations import maps
 from habitat_sim.nav import ShortestPath
+from huggingface_hub import HfApi
 import pickle
 
 def convert_points_to_topdown(pathfinder, points, meters_per_pixel):
@@ -85,3 +86,8 @@ def get_next_closest_point(agent_pos, final_targ, pathfinder):
     if not found_path:
         return [agent_pos, final_targ]
     return path.points
+
+
+def create_scenario_dataset():
+    api = HfApi()
+    api.upload

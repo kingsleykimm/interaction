@@ -10,7 +10,8 @@ class Config:
                 pixel_threshold = 1250,
                 human_id=100,
                 save_path="scenario_data/",
-                seed=0) :
+                seed=0,
+                env_ind = 0) :
         
         self.human_first = human_first
         self.gesture = gesture
@@ -22,6 +23,7 @@ class Config:
         self.human_id = human_id
         self.save_path = save_path
         self.seed = seed
+        self.env_ind = env_ind
     def to_dict(self):
         return {
             "human_first": self.human_first,
@@ -33,6 +35,7 @@ class Config:
             "pixel_threshold": self.pixel_threshold,
             "human_id": self.human_id,
             "save_path": self.save_path,
-            "seed": self.seed
+            "seed": self.seed,
+            "env": self.env_ind
         }
     

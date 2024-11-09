@@ -27,7 +27,7 @@ class SocialNavScenario:
         self.iterations = self.config.iterations
         self.save_path = self.config.save_path
         self.dataset = []
-        self.env = env_setup()
+        self.env = env_setup(self.config.env_ind, self.config.seed)
         self.humanoid_controller : HumanoidRearrangeController = HumanoidRearrangeController(DEFAULT_WALK_POSE_PATH)
         self.env.reset()
     def record_data(self):
@@ -41,14 +41,21 @@ class SocialNavScenario:
         subfolder = os.path.join(self.save_path, current_time)
         if not os.path.exists(subfolder):
             os.makedirs(subfolder)
+        sensor_path = os.path.join(subfolder, 'sensors')
+        video_path = os.path.join(subfolder, 'videos')
+        if not os.path.exists(sensor_path):
+            os.makedirs(sensor_path)
+        if not os.path.exists(video_path):
+            os.makedirs(video_path)
+        
         # decide target here
         rom = self.env.sim.get_rigid_object_manager()
-        id_to_handle = {obj_id: rom.get_object_by_id(obj_id).handle for obj_id in obj_ids}
+        handles = [rom.get_object_by_id(obj_id).handle for obj_id in obj_ids]
         with open(os.path.join(subfolder, "config_file.md"), "w") as f:
             json.dump(self.config.to_dict(), f)
             # include the Env and dataset config later.
         for goal in range(self.num_goals):
-            obj_id = obj_ids[goal]
+            handle = handles[goal]
             
             # print("Current goal: ", first_object.handle)
             for iteration in range(self.iterations):
@@ -58,40 +65,48 @@ class SocialNavScenario:
                 print("Iteration: ", iteration)
                 if self.env.episode_over:
                     self.env.reset()
-                success = self.run_scenario_once(obj_id, iteration)
+                success = self.run_scenario_once(handle, iteration)
                 if success:
-                    save_str = f"target_{id_to_handle[obj_id]}_iteration_{iteration+1}_gesture_{self.gesture}_.pkl"
-                    save_fname = os.path.join(subfolder, save_str)
-                    with open(save_fname, "wb") as f:
-                        pickle.dump(self.dataset, f)
+                    save_str = f"target_{handle}_iteration_{iteration+1}_gesture_{self.gesture}_{current_time}.mp4"
+                    # Took out sensor save for now, put it in later if you want to
+                    # sensor_fname = os.path.join(sensor_path, save_str)
+                    # with open(sensor_fname, "wb") as f:
+                    #     pickle.dump(self.dataset, f)
                     vut.make_video(
-                    self.observations,
-                    "agent_1_articulated_agent_arm_rgb",
-                    "color",
-                    save_fname.replace(".pkl", ".mp4"),
-                    open_vid=False,
+                        self.observations,
+                        "agent_1_articulated_agent_arm_rgb",
+                        "color",
+                        os.path.join(video_path, save_str),
+                        open_vid=False,
                     )
-                    print(f"Saved data to {save_fname}")
+                    print(f"Saved data to {save_str}")
             self.dataset = []
 
-    def run_scenario_once(self, obj_id, iteration_num) -> bool:
+    def run_scenario_once(self, obj_handle, iteration_num) -> bool:
         """Scenario run, returns true if human was seen and successful data log"""
-        target = self.env.sim.get_rigid_object_manager().get_object_by_id(obj_id).translation
-        human_base_transformation = self.env.sim.agents_mgr[0].articulated_agent.base_transformation
-        self.humanoid_controller.reset(human_base_transformation)
         # random location instantation
         obs = self.env.reset()
+        # determine the object
+        target = None
+        rom = self.env.sim.get_rigid_object_manager()
+        for obj_id in self.env.sim.scene_obj_ids:
+            if rom.get_object_by_id(obj_id).handle == obj_handle:
+                target = rom.get_object_by_id(obj_id).translation
+        if target == None:
+            return False
+        human_base_transformation = self.env.sim.agents_mgr[0].articulated_agent.base_transformation
+        self.humanoid_controller.reset(human_base_transformation)
         self.observations = [obs]
         possible_human_pos = self.env.sim.pathfinder.snap_point(self.env.sim.pathfinder.get_random_navigable_point_near(circle_center=np.array(target), radius=8))
-        possible_robot_pos = self.env.sim.pathfinder.snap_point(self.env.sim.pathfinder.get_random_navigable_point_near(circle_center=np.array(target), radius=8))
+        possible_robot_pos = self.env.sim.pathfinder.snap_point(self.env.sim.pathfinder.get_random_navigable_point_near(circle_center=np.array(target), radius=12))
         self.env.sim.agents_mgr[1].articulated_agent.base_pos = possible_robot_pos
         self.env.sim.agents_mgr[0].articulated_agent.base_pos = possible_human_pos
 
         # we're going to use agent movement as a metric to understand if the goal has finished, specifically Spot's movement.
         agent_displ = np.inf
         agent_rot = np.inf
-        prev_rot = self.env.sim.agents_mgr[1].articulated_agent.base_rot # when we use multiple agents we need to use agents_mgr
-        prev_pos = self.env.sim.agents_mgr[1].articulated_agent.base_pos
+        prev_rot = self.env.sim.agents_mgr[0].articulated_agent.base_rot # when we use multiple agents we need to use agents_mgr
+        prev_pos = self.env.sim.agents_mgr[0].articulated_agent.base_pos
 
         human_seen = False
         while agent_displ > 1e-9 or agent_rot > 1e-9:
@@ -107,7 +122,12 @@ class SocialNavScenario:
                 }
             }
             obs = self.env.step(action_dict)
-            self.observations.append(obs)
+            # if obs["agent_0_has_finished_oracle_nav"] == 0 and obs["agent_1_has_finished_oracle_nav"] == 1:
+            #     return False
+            if not human_seen:
+                self.observations.append(obs)
+                if self.distance_between_agents() < 1: # we don't want the dataset being ruined by agents colliding into each other (there's probably a sensor for this)
+                    return False
             if self.env.episode_over:
                 return False
             # TODO: should change hardcoded human_id to config.human_id
@@ -160,11 +180,11 @@ class SocialNavScenario:
             "action_args": {"agent_0_human_joints_trans": new_pose}
         }
         self.observations.append(env.step(action_dict))
-        for i in range(10): # 10 ms
+        for i in range(20): # 10 ms
             self.observations.append(env.step(action_dict))
         gesture_steps = 30
         hand_vec = np.array(target - hands[hand])[[0, 2]]
-        for i in range(gesture_steps//3):
+        for i in range(gesture_steps//2):
             # This computes a pose that moves the agent to relative_position
             hand_pose = hand_pose + mn.Vector3(hand_vec[0] / gesture_steps, 0, hand_vec[1] / gesture_steps)
             human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
@@ -178,7 +198,7 @@ class SocialNavScenario:
             }
             obs = env.step(action_dict)
             self.observations.append(obs)
-        for i in range(gesture_steps//3):
+        for i in range(gesture_steps//2):
             # This computes a pose that moves the agent to relative_position
             hand_pose = hand_pose + mn.Vector3(-hand_vec[0] / gesture_steps, 0, -hand_vec[1] / gesture_steps)
             human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
@@ -192,16 +212,16 @@ class SocialNavScenario:
             }
             obs = env.step(action_dict)
             self.observations.append(obs)
-    def gesture_stop(self):
+    def gesture_stop(self, env : habitat.Env, target):
         pass
     def add_language(self):
         # adds language to observations, otherwise an empty stringp
         pass    
-    def slow_down_agents(self, human):
+    def slow_down_agents(self, human, target):
         if human:
             cur_human_transformation = self.env.sim.agents_mgr[0].articulated_agent.base_transformation
             cur_pos = self.env.sim.agents_mgr[0].articulated_agent.base_pos
-            points = get_next_closest_point(cur_pos, self.target, self.env.sim.pathfinder)
+            points = get_next_closest_point(cur_pos, target, self.env.sim.pathfinder)
             next_targ = points[1]
             vector = next_targ - cur_pos
             vector = vector[[0, 2]]
@@ -226,6 +246,13 @@ class SocialNavScenario:
         bounded_obs : np.array = cur_panoptic_observation[l_height:u_height, l_width:u_width]
         human_id_sum = np.sum(bounded_obs == human_id)
         return human_id_sum > pixel_threshold
+    def distance_between_agents(self):
+        agent_0_pos = np.array(self.env.sim.agents_mgr[0].articulated_agent.base_pos)
+        agent_1_pos = np.array(self.env.sim.agents_mgr[1].articulated_agent.base_pos)
+
+        return np.linalg.norm(agent_0_pos - agent_1_pos)
+
+
     def agent_first(self, agent_no, final_targ):
     
         for i in range(30):
@@ -237,5 +264,5 @@ class SocialNavScenario:
                 }
             }
             obs = self.env.step(action_dict)
-            self.observations.append(obs)
+            # self.observations.append(obs)
 

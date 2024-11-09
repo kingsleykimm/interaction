@@ -13,19 +13,21 @@ parser.add_argument("--pixel_threshold", type=int, help="Threshold for human det
 parser.add_argument("--human_id", type=int, help="Sematnic ID of the human in the scene", default=100)
 parser.add_argument("--save_path", type=str, help="Path to save the data", default="scenario_data/")
 parser.add_argument("--seed", type=int, help="Random seed", default=0)
+parser.add_argument("--env", type=int, help="Which config to use from list of configs in env_setup", default=0)
 args = parser.parse_args()
 
 def main():
-    scenario_config = Config(args.human_first, 
+    scenario_config = Config(args.human_first,
                              args.gesture,
-                            args.language, 
-                            args.num_goals, 
-                            args.iterations, 
-                            args.ratio, 
-                            args.pixel_threshold, 
+                            args.language,
+                            args.num_goals,
+                            args.iterations,
+                            args.ratio,
+                            args.pixel_threshold,
                             args.human_id,
                             args.save_path,
-                            args.seed)
+                            args.seed,
+                            args.env)
     scenario = SocialNavScenario(scenario_config)
     scenario.record_data()
 

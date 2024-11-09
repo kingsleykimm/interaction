@@ -1,6 +1,8 @@
-*data
-*.mp4
+data_creation/data/*
+data_creation/scenario_data/*
+
 hitl*
 *outputs
 *gesture_ahead*
 *__pycache__*
+LLaVA-NeXT/LLaVA-NeXT-Video-32B-Qwen*

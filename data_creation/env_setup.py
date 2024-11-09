@@ -9,7 +9,7 @@ HUMANOID_ACTION_DICT = {
     "humanoid_joint_action": HumanoidJointActionConfig(),
     "navigate_action": OracleNavActionConfig(type="OracleNavCoordinateAction", 
                                                       motion_control="human_joints",
-                                                      spawn_max_dist_to_obj=-1),
+                                                      spawn_max_dist_to_obj=-1.0),
     "humanoid_pick_obj_id_action": HumanoidPickActionConfig(type="HumanoidPickObjIdAction"),
 }
 
@@ -21,16 +21,51 @@ ROBOT_DEFAULT_DICT = {
     "base_vel_action" : BaseVelocityActionConfig()
 }
 
+"""
+uids to download:
+habitat-humanoids
+hssd-hab
+hab3-bench-assets
+replica_cad_dataset
+spot_arm
 
-def make_sim_cfg(agent_dict):
+
+
+"""
+
+SCENES = [
+# hab3-hssd
+"data/hab3_bench_assets/hab3-hssd/scenes/103997919_171031233.scene_instance.json",
+# replica_cad
+"data/replica_cad/configs/scenes/apt_0.scene_instance.json",
+
+]
+
+SCENE_DATASETS = [
+"data/hab3_bench_assets/hab3-hssd/hab3-hssd.scene_dataset_config.json",
+# replica_ca
+"/scratch/bjb3az/interaction/data_creation/data/replica_cad/replicaCAD.scene_dataset_config.json"
+]
+
+EPISODE_DATASETS = [
+"data/hab3_bench_assets/episode_datasets/small_medium.json.gz",
+# replica_cad
+"data/datasets/rearrange_pick/replica_cad/v0/rearrange_pick_replica_cad_v0/pick.json.gz"
+]
+
+
+
+
+
+def make_sim_cfg(agent_dict, env_ind):
     sim_cfg = SimulatorConfig(type="RearrangeSim-v0")
     sim_cfg.habitat_sim_v0.enable_physics = True
     sim_cfg.habitat_sim_v0.enable_hbao = True
 
     
-    sim_cfg.scene = "data/hab3_bench_assets/hab3-hssd/scenes/103997919_171031233.scene_instance.json"
-    sim_cfg.scene_dataset = "data/hab3_bench_assets/hab3-hssd/hab3-hssd.scene_dataset_config.json"
-    sim_cfg.additional_object_paths = ['data/objects/ycb/configs/']
+    sim_cfg.scene = "data/replica_cad/configs/scenes/apt_0.scene_instance.json"
+    sim_cfg.scene_dataset ="data/replica_cad/replicaCAD.scene_dataset_config.json"
+    sim_cfg.additional_object_paths = ['data/objects/ycb/configs/', "data/replica_cad/configs/objects"]
 
     cfg = OmegaConf.create(sim_cfg)
     cfg.agents = agent_dict # sets up agents
@@ -39,9 +74,8 @@ def make_sim_cfg(agent_dict):
 
     return cfg
 
-def make_hab_cfg(agent_dict, action_dict):
-    sim_cfg = make_sim_cfg(agent_dict)
-    print("BEFORE")
+def make_hab_cfg(agent_dict, action_dict, env_ind, seed):
+    sim_cfg = make_sim_cfg(agent_dict, env_ind)
     task_config = TaskConfig(type="RearrangeEmptyTask-v0")
     task_config.actions = action_dict # setups the actions that we can use, we can import these from structuredconfigs as well
     task_config.lab_sensors = {
@@ -52,11 +86,11 @@ def make_hab_cfg(agent_dict, action_dict):
     }
     dataset_cfg = DatasetConfig(
         type="RearrangeDataset-v0",
-        data_path="data/hab3_bench_assets/episode_datasets/small_medium.json.gz",
+        data_path=EPISODE_DATASETS[env_ind],
     )
     env_cfg = EnvironmentConfig()
     
-    habitat_cfg = HabitatConfig()
+    habitat_cfg = HabitatConfig(seed=seed)
     habitat_cfg.simulator = sim_cfg
     habitat_cfg.environment = env_cfg
     habitat_cfg.dataset = dataset_cfg
@@ -65,9 +99,9 @@ def make_hab_cfg(agent_dict, action_dict):
 
     return habitat_cfg
 
-def env_setup(): # pass in config from yaml
+def env_setup(env_ind, seed): # pass in config from yaml
     agent_dict, action_dict = agent_action_setup()
-    hab_cfg = make_hab_cfg(agent_dict, action_dict)
+    hab_cfg = make_hab_cfg(agent_dict, action_dict, env_ind, seed)
     res_cfg = OmegaConf.create(hab_cfg)
     return Env(res_cfg)
 

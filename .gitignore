@@ -1,6 +1,6 @@
 data_creation/data/*
 data_creation/scenario_data/*
-
+.env
 hitl*
 *outputs
 *gesture_ahead*

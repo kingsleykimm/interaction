@@ -1,9 +1,10 @@
 # Load model directly
 import os
 import yaml
+import datetime
 import numpy as np
 from transformers import AutoProcessor, AutoModelForCausalLM, Trainer, TrainingArguments, DataCollatorForLanguageModeling, LlavaNextVideoForConditionalGeneration, LlavaNextVideoProcessor
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainingArguments, HfArgumentParser
 from argparse import ArgumentParser
 from peft import LoraConfig, get_peft_model
 import torch
@@ -11,11 +12,11 @@ from torch.utils.data import Dataset, DataLoader
 from datasets import load_dataset, Video
 from decord import VideoReader, cpu
 
-USE_LORA = True
+
+USE_LORA = False
 MAX_LENGTH = 512
 BATCH_SIZE = None
 NUM_FRAMES = 32
-MODEL_ID = "llava-hf/LLaVA-NeXT-Video-7B-hf"
 
 CHECKPOINT_DIR = '/scratch/bjb3az/interaction/model_ckpt'
 
@@ -24,6 +25,8 @@ parser.add_argument('--dataset_path', type=str, help="path/link to the hf or loc
 parser.add_argument('--num_frames', type=int, help="Number of frames to split videos into")
 parser.add_argument('--ckpt_dir', type=str, help="directory of model we save to")
 parser.add_argument('--hf', action="store_true", help="Whether or not to use huggingface dataset")
+parser.add_argument('--config_path', type=str, default='model_cfg.yaml', help="Path to model config for Training Arguments")
+parser.add_argument('--model_path', type=str, default='LLaVA-NeXT-Video-7B-hf', help='Where to get the model from')
 
 MASTER_PROMPT = """ 
 Imagine you are a robot at home, operating inside an apartment or household along with another agent, a human. You are a confident robot who knows
@@ -71,7 +74,7 @@ def load_in_dataset(hf : bool, file_path, processor, num_frames):
         return batch
 
     dataset = dataset.map(collate_fn, batched=False, num_proc=1,writer_batch_size=400)
-    return dataset
+    return dataset['train']
     
 def load_video(video_path,num_frames):
     vr = VideoReader(uri=video_path, ctx=cpu(0)) # you need to install from source to use gpu ctx
@@ -85,7 +88,7 @@ class LlavaNextVideoDataCollatorWithPadding:
         self.processor = processor
 
     def __call__(self, features):
-        padded_inputs = self.processor.pad(
+        padded_inputs = self.processor.tokenizer.pad(
             {
                 "input_ids": [feat['input_ids'][0] for feat in features], # each element is one batch only so we slice [0]
                 "attention_mask": [feat['attention_mask'][0] for feat in features],
@@ -95,7 +98,7 @@ class LlavaNextVideoDataCollatorWithPadding:
         )
 
         labels = padded_inputs["input_ids"].clone()
-        labels[labels == self.processor.pad_token_id] = -100
+        labels[labels == self.processor.tokenizer.pad_token_id] = -100
         padded_inputs["labels"] = labels
         padded_inputs["pixel_values_videos"] = torch.cat([feat['pixel_values_videos'] for feat in features], dim=0)
 
@@ -120,11 +123,11 @@ def load_training_args(config_path):
         args = yaml.safe_load(f)
     return TrainingArguments(**args)
 
-def load_model():
+def load_model(model_path):
     # we are probably going to do full finetuning since 7B * 18 = 126 < 128 GB available
     if USE_LORA:
         model = LlavaNextVideoForConditionalGeneration.from_pretrained(
-            MODEL_ID,
+            model_path,
             torch_dtype = torch.float16,
             device_map = 'auto'
         )
@@ -138,7 +141,7 @@ def load_model():
         model = get_peft_model(model, lora_cfg)
     else:
         model = LlavaNextVideoForConditionalGeneration.from_pretrained(
-            MODEL_ID,
+            model_path,
             torch_dtype= torch.float16,
             _attn_implementation="flash_attention_2",
             device_map="auto"
@@ -153,17 +156,24 @@ if __name__ == "__main__":
     processor.padding_side = "right"
     dataset = load_in_dataset(True, args.dataset_path, processor, args.num_frames)
     dataset = dataset.shuffle(seed=42)
-    train_dataset = dataset['train']
-    model = load_model()
+    dataset = dataset.train_test_split(test_size=0.2)
+    train_dataset = dataset['train'].with_format('torch')
+    test_dataset = dataset['test'].with_format('torch')
+    model = load_model(args.model_path)
     trainer = Trainer(
         model = model,
         tokenizer = processor,
         data_collator=LlavaNextVideoDataCollatorWithPadding(processor=processor),
         train_dataset=train_dataset,
-        eval_dataset=None, # need one
-        args=args
+        eval_dataset=test_dataset, # need one
+        args=load_training_args(args.config_path)
     )
-        
+    # torch.cuda.empty_cache()
+    print(model)
+    trainer.train()
+    trainer.model.push_to_hub('kingsleykim/social-navigation-finetune')
+
+    
 
 
     # dataset = dataset.train_test_split(test_size=0.2)  don't put that in yet

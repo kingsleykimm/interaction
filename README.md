@@ -17,6 +17,6 @@ Common issues that I run into:
     Solution: module load cuda/12.2.2 apptainer pytorch/2.0.1
     apptainer run --nv $CONTAINERDIR/pytorch-2.0.1.sif
     inference needs to be run on appropriate GPU sizes (64GB) for 32
-
+- seems like auto_batch_size in model_config is the way to go
 Common habitat issues:
 - Make sure you are never accessing env variables before calling env.reset(), and intending to use them after the env.reset()

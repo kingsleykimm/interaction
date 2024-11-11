@@ -1,2 +1,24 @@
-output_dir: output_dir
+output_dir: llava_finetune
 eval_strategy: 'steps'
+eval_steps: 20
+auto_find_batch_size: True
+# per_device_train_batch_size: 2
+# per_device_eval_batch_size: 2
+gradient_accumulation_steps: 4
+learning_rate: !!float 2e-05
+max_steps: 200
+lr_scheduler_type: 'cosine'
+warmup_ratio: 0.1
+
+logging_steps: 20
+save_strategy: 'no'
+save_total_limit: 1
+# fp16: True
+
+optim: 'adamw_torch'
+
+push_to_hub: True
+hub_model_id: 'kingsleykim/social-navigation-finetune'
+label_names:
+  - 'model_outputs'
+report_to: 'wandb'

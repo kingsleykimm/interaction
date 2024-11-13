@@ -37,20 +37,26 @@ SCENES = [
 # hab3-hssd
 "data/hab3_bench_assets/hab3-hssd/scenes/103997919_171031233.scene_instance.json",
 # replica_cad
-"data/replica_cad/configs/scenes/apt_0.scene_instance.json",
+"data/replica_cad/configs/scenes/apt_2.scene_instance.json",
+# aithor floorplan (interchangable with other scenes)
+'data/ai2thor-hab/ai2thor-hab/configs/scenes/iTHOR/FloorPlan1_physics.scene_instance.json'
 
 ]
 
 SCENE_DATASETS = [
 "data/hab3_bench_assets/hab3-hssd/hab3-hssd.scene_dataset_config.json",
 # replica_ca
-"/scratch/bjb3az/interaction/data_creation/data/replica_cad/replicaCAD.scene_dataset_config.json"
+"/scratch/bjb3az/interaction/data_creation/data/replica_cad/replicaCAD.scene_dataset_config.json",
+# AI-THOR
+'data/ai2thor-hab/ai2thor-hab/ai2thor-hab.scene_dataset_config.json'
 ]
 
 EPISODE_DATASETS = [
 "data/hab3_bench_assets/episode_datasets/small_medium.json.gz",
 # replica_cad
-"data/datasets/rearrange_pick/replica_cad/v0/rearrange_pick_replica_cad_v0/pick.json.gz"
+"data/datasets/rearrange_pick/replica_cad/v0/rearrange_pick_replica_cad_v0/pick.json.gz",
+# AI2THOR HAB
+'data/datasets/ai2thor/train/train.json.gz'
 ]
 
 
@@ -63,8 +69,8 @@ def make_sim_cfg(agent_dict, env_ind):
     sim_cfg.habitat_sim_v0.enable_hbao = True
 
     
-    sim_cfg.scene = "data/replica_cad/configs/scenes/apt_0.scene_instance.json"
-    sim_cfg.scene_dataset ="data/replica_cad/replicaCAD.scene_dataset_config.json"
+    sim_cfg.scene = SCENES[env_ind]
+    sim_cfg.scene_dataset = SCENE_DATASETS[env_ind]
     sim_cfg.additional_object_paths = ['data/objects/ycb/configs/', "data/replica_cad/configs/objects"]
 
     cfg = OmegaConf.create(sim_cfg)
@@ -85,7 +91,7 @@ def make_hab_cfg(agent_dict, action_dict, env_ind, seed):
         'has_finished_sensor': HasFinishedOracleNavSensorConfig(),
     }
     dataset_cfg = DatasetConfig(
-        type="RearrangeDataset-v0",
+        type="ObjectNav-v1",
         data_path=EPISODE_DATASETS[env_ind],
     )
     env_cfg = EnvironmentConfig()

@@ -56,7 +56,7 @@ class SocialNavScenario:
             # include the Env and dataset config later.
         for goal in range(self.num_goals):
             handle = handles[goal]
-            
+            print("Current goal: ", handle)
             # print("Current goal: ", first_object.handle)
             for iteration in range(self.iterations):
                 # run the random spawning method

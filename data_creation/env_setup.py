@@ -46,9 +46,9 @@ SCENES = [
 SCENE_DATASETS = [
 "data/hab3_bench_assets/hab3-hssd/hab3-hssd.scene_dataset_config.json",
 # replica_ca
-"/scratch/bjb3az/interaction/data_creation/data/replica_cad/replicaCAD.scene_dataset_config.json",
+"data/replica_cad/replicaCAD.scene_dataset_config.json",
 # AI-THOR
-'data/ai2thor-hab/ai2thor-hab/ai2thor-hab.scene_dataset_config.json'
+'data/ai2thor-hab/ai2thor-hab/configs/scenes/ProcTHOR/2/ProcTHOR-Train-0.scene_instance.json'
 ]
 
 EPISODE_DATASETS = [
@@ -64,7 +64,11 @@ EPISODE_DATASETS = [
 
 
 def make_sim_cfg(agent_dict, env_ind):
-    sim_cfg = SimulatorConfig(type="RearrangeSim-v0")
+    ds_name = EPISODE_DATASETS[env_ind]
+    if 'ai2thor' in ds_name:
+        sim_cfg = SimulatorConfig()
+    else:
+        sim_cfg = SimulatorConfig(type="RearrangeSim-v0")
     sim_cfg.habitat_sim_v0.enable_physics = True
     sim_cfg.habitat_sim_v0.enable_hbao = True
 
@@ -82,7 +86,13 @@ def make_sim_cfg(agent_dict, env_ind):
 
 def make_hab_cfg(agent_dict, action_dict, env_ind, seed):
     sim_cfg = make_sim_cfg(agent_dict, env_ind)
-    task_config = TaskConfig(type="RearrangeEmptyTask-v0")
+    ds_name = EPISODE_DATASETS[env_ind]
+    if 'ai2thor' in ds_name:
+        task_config = TaskConfig(type="ObjectNav-v1")
+        dataset_type = "ObjectNav-v1"
+    else:
+        task_config = TaskConfig(type="RearrangeEmptyTask-v0")
+        dataset_type = "RearrangeDataset-v0"
     task_config.actions = action_dict # setups the actions that we can use, we can import these from structuredconfigs as well
     task_config.lab_sensors = {
         'humanoid_detector' : HumanoidDetectorSensorConfig(human_pixel_threshold=1500), # these get assigned to each agent, so remember to prepend with the agent_{id}
@@ -90,9 +100,14 @@ def make_hab_cfg(agent_dict, action_dict, env_ind, seed):
         'joint_sensor' : HumanoidJointSensorConfig(),
         'has_finished_sensor': HasFinishedOracleNavSensorConfig(),
     }
+    scenes_dir="data/scene_datasets/"
+    if env_ind == 1:
+        scenes_dir = "data/replica_cad/replicaCAD.scene_dataset_config.json"
+
     dataset_cfg = DatasetConfig(
-        type="ObjectNav-v1",
+        type=dataset_type,
         data_path=EPISODE_DATASETS[env_ind],
+        scenes_dir=scenes_dir
     )
     env_cfg = EnvironmentConfig()
     

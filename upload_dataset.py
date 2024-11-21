@@ -4,18 +4,16 @@ import numpy as np
 from datasets import load_dataset, Video
 from decord import VideoReader, cpu
 from transformers import LlavaNextVideoProcessor
-from huggingface_hub import HfApi
 parser = ArgumentParser()
 parser.add_argument('--dataset_path', type=str, help="path/link to the hf or local datset")
 parser.add_argument('--num_frames', type=int, help="Number of frames to split videos into")
 
 MASTER_PROMPT = """ 
-Imagine you are a robot at home, operating inside an apartment or household along with another agent, a human. You are a confident robot who knows
-      how to operate in these environments.
-      You are going to receive a video showing an interaction between you and the human, where you run into each other and need to make a decision.
-      The human might perform some sort of action that signals you to go ahead, but regardless, you must give the next action you will take, this is mandatory. Focus only on the gestures/movement
-      the human is making, not on anything else in the environment. 
-      Please explain step-by-step why you chose to do the certain actions and be concise in your response but include any essential information.
+Imagine you are a robot at home, operating inside an apartment along with another agent, a human. You a robot who understands human intent well and has a firm understanding of social cues and the importance of cooperation betwen humans and robots in shared spaces.
+      You encounter a human in the apartment, and you run into each other and you need to make a decision of how you will proceed, this is mandatory. 
+      Don't provide any 'ifs' in your answer, be explicit, your only goal is to determine what your next action is, don't worry about any other goals.
+      Please explain step-by-step why you chose to do the certain actions and be concise in your response and inclue only essential information.
+      Your answer should be formatted like this: ’Action: [action]], Reasoning: [reasoning]’, where action details the next action you will take, and reasoning is your explanation behind that choice.
 """
 
 def load_video(video_path,num_frames):
@@ -30,7 +28,7 @@ def load_in_dataset(file_path, processor, num_frames):
     dataset = dataset.cast_column("video", Video(decode=False)) # to remove the automatic decord
     def collate_fn(example):
     # data format will just have filename and label
-        label = example["model_output"]
+        label = example["model_output"].strip().strip('\n')
         video_clip = load_video(example["video"]['path'], num_frames)
         # example["video"] = video_clip
 
@@ -52,7 +50,8 @@ def load_in_dataset(file_path, processor, num_frames):
         batch = processor(
             text=prompt,
             videos=video_clip,
-            return_tensors="pt"
+            return_tensors="pt",
+            truncation=True
         )
         
         return batch
@@ -63,6 +62,7 @@ def load_in_dataset(file_path, processor, num_frames):
 if __name__ == '__main__':
     args = parser.parse_args()
     processor = LlavaNextVideoProcessor.from_pretrained("llava-hf/LLaVA-NeXT-Video-7B-hf", use_fast=False) # this is already the tokenizer
+    processor.tokenizer.padding_side = 'right'
     dataset = load_in_dataset(args.dataset_path, processor, args.num_frames)
     dataset = dataset.train_test_split(test_size=0.2)
     format_data = "%d_%m_%y_%H_%M_%S"
@@ -70,9 +70,6 @@ if __name__ == '__main__':
     dataset_name = f"kingsleykim/habitat_videos_{cur_time.strftime(format_data)}"
     # make sure to huggingface-cli login before doing this
     dataset.push_to_hub(dataset_name)
-    # now need to upload to hf
-    api = HfApi()
-    api.upload_folder(folder_path=args.dataset_path, repo_id=dataset_name, repo_type='dataset' )
 
     # we upload both so we can download both as well
 

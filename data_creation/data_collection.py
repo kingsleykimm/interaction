@@ -9,7 +9,7 @@ parser.add_argument("--language", help="Whether the human speaks", action="store
 parser.add_argument("--num_goals", type=int, help="Number of targets", default=1)
 parser.add_argument("--iterations", type=int, help="Number of iterations for each target", default=1)
 parser.add_argument("--ratio", type=float, help="Ratio of area of robot view to be considered for human detection", default=0.85)
-parser.add_argument("--pixel_threshold", type=int, help="Threshold for human detection", default=1250)
+parser.add_argument("--pixel_threshold", type=int, help="Threshold for human detection", default=1000)
 parser.add_argument("--human_id", type=int, help="Sematnic ID of the human in the scene", default=100)
 parser.add_argument("--save_path", type=str, help="Path to save the data", default="scenario_data/")
 parser.add_argument("--seed", type=int, help="Random seed", default=0)

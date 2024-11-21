@@ -7,3 +7,5 @@ hitl*
 *__pycache__*
 LLaVA-NeXT-Video-7B-hf*
 wandb*
+good_data*
+llava_finetune*

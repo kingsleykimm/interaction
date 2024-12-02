@@ -103,7 +103,7 @@ class SocialNavScenario:
         agent_rot = np.inf
         prev_rot = self.env.sim.agents_mgr[0].articulated_agent.base_rot # when we use multiple agents we need to use agents_mgr
         prev_pos = self.env.sim.agents_mgr[0].articulated_agent.base_pos
-
+        slack = 0
         human_seen = False
         while agent_displ > 1e-9 or agent_rot > 1e-9:
             prev_rot = self.env.sim.agents_mgr[0].articulated_agent.base_rot
@@ -120,7 +120,7 @@ class SocialNavScenario:
             obs = self.env.step(action_dict)
             # if obs["agent_0_has_finished_oracle_nav"] == 0 and obs["agent_1_has_finished_oracle_nav"] == 1:
             #     return False
-            if not human_seen:
+            if not human_seen and slack > 6:
                 self.observations.append(obs)
                 if self.distance_between_agents() < 1: # we don't want the dataset being ruined by agents colliding into each other (there's probably a sensor for this)
                     return False, ""
@@ -152,6 +152,7 @@ class SocialNavScenario:
             if human_seen:
                 self.dataset.append(self.observations) # don't do video format
                 return True, obj.handle
+            slack += 1
         return False, ""
                 
                 # fix: rotate the robot more to the left, or get the headings of both agents / use the robot sensor to find the human's location

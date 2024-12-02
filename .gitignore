@@ -6,6 +6,10 @@ hitl*
 *gesture_ahead*
 *__pycache__*
 LLaVA-NeXT-Video-7B-hf*
+Qwen2-VL-72B-Instruct*
 wandb*
 good_data*
 llava_finetune*
+*.txt
+*.csv
+notes*

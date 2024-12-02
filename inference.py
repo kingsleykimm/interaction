@@ -9,7 +9,7 @@ INFERENCE_PROMPT = """
 Imagine you are a robot at home, operating inside an apartment along with another agent, a human. You a robot who understands human intent well and has a firm understanding of social cues and the importance of cooperation betwen humans and robots in shared spaces.
       You encounter a human in the apartment, and you run into each other and you need to make a decision of how you will proceed, this is mandatory. 
       Don't provide any 'ifs' in your answer, be explicit, your only goal is to determine what your next action is, don't worry about any other goals.
-      Please explain step-by-step why you chose to do the certain actions and be concise in your response and inclue only essential information.
+      Please explain step-by-step why you chose to do the certain actions and be concise in your response and inclue only essential information. If you aren't sure, 
       Your answer should be formatted like this: ’Action: [action]], Reasoning: [reasoning]’, where action details the next action you will take, and reasoning is your explanation behind that choice.
 """
 
@@ -72,14 +72,12 @@ def run_inference(dataset, base, finetune, processor):
         finetuned_video_clip = video_clip.to(finetune.device)
         with torch.inference_mode():
             base_output = base.generate(**base_batch, max_length=512, pixel_values_videos=base_video_clip)
-            finetuned_output = finetune.generate(**finetuned_batch, max_length=1000, pixel_values_videos=finetuned_video_clip)
-        print(base_output, finetuned_output)
+            finetuned_output = finetune.generate(**finetuned_batch, max_length=1000, pixel_values_videos=finetuned_video_clip, do_sample=True)
         base_generated_text = processor.batch_decode(base_output, skip_special_tokens=True, clean_up_tokenization_spaces=True)[0].strip()
         finetuned_generated_text = processor.batch_decode(finetuned_output, skip_special_tokens=True, clean_up_tokenization_spaces=True)[0].strip()
         # find action and reasoning and only take those
 
         print(f"Iteration: {ind}, Base: {base_generated_text}, Generated: {finetuned_generated_text}")
-        return
         data.append([vid_name, base_generated_text, finetuned_generated_text])
 
     with open('output_comparison.csv', 'w') as f:

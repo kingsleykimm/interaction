@@ -34,7 +34,6 @@ class SocialNavScenario:
     def record_data(self):
         num_targets = len(self.env.sim.scene_obj_ids)
         self.num_goals = min(self.num_goals, num_targets)
-        obj_ids = copy.deepcopy(self.env.sim.scene_obj_ids)
         # figure out reliable way to get obj_id we want. Right now everytime we call reset habitat keeps breaking the ID order so we need to fix that.
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
@@ -131,11 +130,15 @@ class SocialNavScenario:
                 human_seen = True
                 # action = self.slow_down_agents(True)    #TODO: implement something better than just standing still for 10 ms, although it's not too bad                            
                 # issue: need to get more of human in frame
-                if not self.human_first:
+                if not self.human_first: # human needs to slow down
                     # human slows down
                     if self.gesture:
                         # implement  gesture here
-                        self.gesture_ahead(self.env, target) # human gestures
+                        self.gesture_ahead(target) # human gestures
+                    # human needs to stop completely
+                    if not self.gesture:
+                        self.agent_first(0, target)
+                        self.human_complete_stop()
                     self.agent_first(1, target) # robot goes first
                 else:
                     if self.gesture:
@@ -156,19 +159,19 @@ class SocialNavScenario:
         return False, ""
                 
                 # fix: rotate the robot more to the left, or get the headings of both agents / use the robot sensor to find the human's location
-    def gesture_ahead(self, env : habitat.Env, target):
+    def gesture_ahead(self, target):
         target = np.array(target)
-        hands = [np.array(env.sim.agents_mgr[0].articulated_agent.ee_transform(0).translation), np.array(env.sim.agents_mgr[0].articulated_agent.ee_transform(1).translation)]
+        hands = [np.array(self.env.sim.agents_mgr[0].articulated_agent.ee_transform(0).translation), np.array(self.env.sim.agents_mgr[0].articulated_agent.ee_transform(1).translation)]
         distances = [np.linalg.norm(target - hand) for hand in hands]
         if distances[0] < distances[1]:
-            hand_pose = env.sim.agents_mgr[0].articulated_agent.ee_transform(0).translation
+            hand_pose = self.env.sim.agents_mgr[0].articulated_agent.ee_transform(0).translation
             hand = 0
         else:
-            hand_pose = env.sim.agents_mgr[0].articulated_agent.ee_transform(1).translation # EE stands for end effector
+            hand_pose = self.env.sim.agents_mgr[0].articulated_agent.ee_transform(1).translation # EE stands for end effector
             hand = 1
         # we need to keep updating the base by using the articulated_agent.base_transformation
-        self.humanoid_controller.obj_transform_base = env.sim.agents_mgr[0].articulated_agent.base_transformation
-        rel_pos = np.array(env.sim.agents_mgr[1].articulated_agent.base_pos - env.sim.agents_mgr[0].articulated_agent.base_pos)[[0, 2]]
+        self.humanoid_controller.obj_transform_base = self.env.sim.agents_mgr[0].articulated_agent.base_transformation
+        rel_pos = np.array(self.env.sim.agents_mgr[1].articulated_agent.base_pos - self.env.sim.agents_mgr[0].articulated_agent.base_pos)[[0, 2]]
         # rel_pos = np.array(env.sim.agents_mgr[1].articulated_agent.base_pos) - np.array(env.sim.agents_mgr[0].articulated_agent.base_pos) 
         self.humanoid_controller.calculate_turn_pose(mn.Vector3(rel_pos[0], 0, rel_pos[1]))
         new_pose = self.humanoid_controller.get_pose()
@@ -176,15 +179,15 @@ class SocialNavScenario:
             "action": "agent_0_humanoid_joint_action",
             "action_args": {"agent_0_human_joints_trans": new_pose}
         }
-        self.observations.append(env.step(action_dict))
+        self.observations.append(self.env.step(action_dict))
         for i in range(40): # 10 ms
-            self.observations.append(env.step(action_dict))
+            self.observations.append(self.env.step(action_dict))
         gesture_steps = 30
         hand_vec = np.array(target - hands[hand])[[0, 2]]
         for i in range(gesture_steps//2):
             # This computes a pose that moves the agent to relative_position
             hand_pose = hand_pose + mn.Vector3(hand_vec[0] / gesture_steps, 0, hand_vec[1] / gesture_steps)
-            human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
+            human_transformation = self.env.sim.agents_mgr[0].articulated_agent.base_transformation
             self.humanoid_controller.obj_transform_base = human_transformation
             self.humanoid_controller.calculate_reach_pose(hand_pose, index_hand=hand)
             # # The get_pose function gives as a humanoid pose in the same format as HumanoidJointAction
@@ -193,12 +196,12 @@ class SocialNavScenario:
                 "action": "agent_0_humanoid_joint_action",
                 "action_args": {"agent_0_human_joints_trans": new_pose}
             }
-            obs = env.step(action_dict)
+            obs = self.env.step(action_dict)
             self.observations.append(obs)
         for i in range(gesture_steps//2):
             # This computes a pose that moves the agent to relative_position
             hand_pose = hand_pose + mn.Vector3(-hand_vec[0] / gesture_steps, 0, -hand_vec[1] / gesture_steps)
-            human_transformation = env.sim.agents_mgr[0].articulated_agent.base_transformation
+            human_transformation = self.env.sim.agents_mgr[0].articulated_agent.base_transformation
             self.humanoid_controller.obj_transform_base = human_transformation
             self.humanoid_controller.calculate_reach_pose(hand_pose, index_hand=hand)
             # # The get_pose function gives as a humanoid pose in the same format as HumanoidJointAction
@@ -207,8 +210,33 @@ class SocialNavScenario:
                 "action": "agent_0_humanoid_joint_action",
                 "action_args": {"agent_0_human_joints_trans": new_pose}
             }
-            obs = env.step(action_dict)
+            obs = self.env.step(action_dict)
             self.observations.append(obs)
+    def human_complete_stop(self):
+        self.humanoid_controller.obj_transform_base = self.env.sim.agents_mgr[0].articulated_agent.base_transformation
+        rel_pos = np.array(self.env.sim.agents_mgr[1].articulated_agent.base_pos - self.env.sim.agents_mgr[0].articulated_agent.base_pos)[[0, 2]]
+        self.humanoid_controller.calculate_turn_pose(mn.Vector3(rel_pos[0], 0, rel_pos[1]))
+        new_pose = self.humanoid_controller.get_pose()
+        action_dict = {
+                "action": "agent_0_humanoid_joint_action",
+                "action_args": {"agent_0_human_joints_trans": new_pose}
+            }
+        obs = self.env.step(action_dict)
+        self.observations.append(obs)
+        self.humanoid_controller.obj_transform_base = self.env.sim.agents_mgr[0].articulated_agent.base_transformation
+        self.humanoid_controller.calculate_stop_pose()
+        new_pose = self.humanoid_controller.get_pose()
+        action_dict = {
+                "action": "agent_0_humanoid_joint_action",
+                "action_args": {"agent_0_human_joints_trans": new_pose}
+            }
+        obs = self.env.step(action_dict)
+        self.observations.append(obs)
+        for i in range(35):
+            self.observations.append(self.env.step(action_dict))
+        # calculate turn to the robot
+        
+
     def gesture_stop(self, env : habitat.Env, target):
         pass
     def add_language(self):

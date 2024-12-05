@@ -144,6 +144,7 @@ class SocialNavScenario:
                     if self.gesture:
                         self.gesture_stop(self.env, target) # TODO
                     # human speeds up, robot keeps stopping then we continue
+                    # let human walk like 5 ms
                     self.agent_first(0, target) # human goes first
             cur_rot = self.env.sim.agents_mgr[0].articulated_agent.base_rot
             cur_pos = self.env.sim.agents_mgr[0].articulated_agent.base_pos
@@ -280,7 +281,7 @@ class SocialNavScenario:
 
     def agent_first(self, agent_no, final_targ):
     
-        for i in range(10):
+        for i in range(15):
             action_dict = {
                 'action' : f"agent_{agent_no}_navigate_action",
                 "action_args" : {

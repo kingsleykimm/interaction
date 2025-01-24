@@ -25,7 +25,8 @@ Common habitat issues:
 Some other ideas:
 - do model merging / moe with posegpts to get even better gesture recognizers, but not needed
 - next steps: figure out how to convert natural language planning to feasible actions, or just make the VLM output motor rotations instead
-- other steps could be to look at the current image and make the VLM figure out where they should head to next, which is another important planning step
+    - Since we're outputting code, we should do two stages:
+    - online DPO to make it better at just outputting actual code
 
 
 Modules you need:

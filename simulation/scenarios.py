@@ -32,6 +32,7 @@ class SocialNavScenario:
         self.humanoid_controller : HumanoidRearrangeController = HumanoidRearrangeController(DEFAULT_WALK_POSE_PATH)
         self.env.reset()
     def record_data(self):
+        print("Env actions", self.env._task.actions)
         num_targets = len(self.env.sim.scene_obj_ids)
         self.num_goals = min(self.num_goals, num_targets)
         # figure out reliable way to get obj_id we want. Right now everytime we call reset habitat keeps breaking the ID order so we need to fix that.
@@ -63,9 +64,9 @@ class SocialNavScenario:
                 self.env.reset()
             success, handle = self.run_scenario_once(iteration)
             if success:
-                save_str = f"target_{handle}_iteration_{iteration+1}_gesture_{self.gesture}_{current_time}_seed_{self.config.seed}.mp4"
+                save_str = f"target_{handle}_iteration_{iteration+1}_gesture_{self.gesture}_{current_time}_seed_{self.config.seed}"
                 # Took out sensor save for now, put it in later if you want to
-                # sensor_fname = os.path.join(sensor_path, save_str)
+                sensor_fname = os.path.join(sensor_path, save_str)
                 # with open(sensor_fname, "wb") as f:
                 #     pickle.dump(self.dataset, f)
 
@@ -73,14 +74,19 @@ class SocialNavScenario:
                     self.observations,
                     "agent_1_articulated_agent_arm_rgb",
                     "color",
-                    os.path.join(video_path, save_str),
+                    os.path.join(video_path, save_str + '.mp4'),
                     open_vid=False,
                 )
+
+                with open(sensor_fname + '.pkl', 'wb') as f:
+                    pickle.dump(self.robot_actions, f)
+                
                 print(f"Saved data to {save_str}")
 
     def run_scenario_once(self, iteration_num) -> bool:
         """Scenario run, returns true if human was seen and successful data log"""
         # random location instantation
+
         obs = self.env.reset()
         # determine the object
         target = None
@@ -280,7 +286,7 @@ class SocialNavScenario:
 
 
     def agent_first(self, agent_no, final_targ):
-    
+        self.robot_actions = []
         for i in range(15):
             action_dict = {
                 'action' : f"agent_{agent_no}_navigate_action",
@@ -289,7 +295,15 @@ class SocialNavScenario:
                     f"agent_{agent_no}_mode" : 1
                 }
             }
+
             obs = self.env.step(action_dict)
+            if agent_no == 1: # robot moving
+                robot_base_action = self.env._task.actions[f'agent_{agent_no}_navigate_action']
+                cur_linear_vel, cur_angular_vel = robot_base_action.base_vel_ctrl.linear_velocity, robot_base_action.base_vel_ctrl.angular_velocity # this is the ground truth it uses
+                self.robot_actions.append({
+                    'linear_vel' : cur_linear_vel,
+                    'angular_vel' : cur_angular_vel
+                })
             if agent_no == 0:
                 self.observations.append(obs)
 
